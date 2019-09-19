@@ -14,7 +14,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/weixuan75/o_util_js.git"
+    "url": "git+https://github.com/ooncn/o_util_js.git"
   },
   "keywords": [
     "util"
@@ -22,7 +22,7 @@
   "author": "weixuan75",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/weixuan75/o_util_js/issues"
+    "url": "https://github.com/ooncn/o_util_js/issues"
   },
-  "homepage": "https://github.com/weixuan75/o_util_js#readme"
+  "homepage": "https://github.com/ooncn/o_util_js#readme"
 }
