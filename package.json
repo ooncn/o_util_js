@@ -1,12 +1,14 @@
 {
   "name": "o_util_js",
-  "version": "1.1.5",
+  "version": "1.1.8",
   "description": "",
   "main": "index.js",
   "dependencies": {
+    "exif-js": "^2.3.0",
     "js-cookie": "^2.2.0",
     "js-md5": "^0.7.3",
-    "localforage": "^1.7.3"
+    "localforage": "^1.7.3",
+    "spark-md5": "^3.0.0"
   },
   "devDependencies": {},
   "scripts": {

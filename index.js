@@ -1,7 +1,9 @@
 'use strict';
 const COOKIES = require("js-cookie");
 const MD5 = require("js-md5");
-const localForage = require("localforage");
+const exif = require("exif-js");
+const SparkMD5 = require("spark-md5");
+
 const util = {
     alertErr(_this, err) {
         console.log(err);
@@ -382,10 +384,10 @@ const util = {
                     d["children"] = c;
                 }
             }
-            console.log(d)
+            // console.log(d)
             to.push(d);
         }
-        console.log(to)
+        // console.log(to)
         return to;
     },
 
@@ -466,7 +468,7 @@ const util = {
     getDayList(date) {
         var year = date.substring(0, 4), month = date.substring(5);
         var c = this.getDaysInOneMonth(year, month);
-        console.log(c);
+        // console.log(c);
         var day = [];
         for (let i = 0; i < c; i++) {
             day[i] = (i + 1) + "日";
@@ -606,9 +608,9 @@ const util = {
         return true
     },
     isMac(mac) {
-        mac = mac.replace(/:/g,"").replace(/ /g,"").replace(/-/g,"");
-        console.log(mac);
-        if (mac.length!==12){
+        mac = mac.replace(/:/g, "").replace(/ /g, "").replace(/-/g, "");
+        // console.log(mac);
+        if (mac.length !== 12) {
             return false;
         }
         var reg = new RegExp(/^[0-9a-fA-F]+$/);
@@ -647,6 +649,11 @@ const util = {
         var reg = /(^\d{15}$)|(^\d{16}$)|(^\d{18}$)|(^\d{19}$)|(^\d{20}$)|(^\d{17}(\d|X)$)/;
         return reg.test(str);
     },
+    isUrl: function (str) {
+        //身份证号码为15位或者18位，15位时全为数字，18位前17位为数字，最后一位是校验位，可能为数字或字符X
+        var reg = /^(?:http(s)?:\/\/)?[\w.-]+(?:\.[\w\.-]+)+[\w\-\._~:/?#[\]@!\$&'\*\+,;=.]+$/;
+        return reg.test(str);
+    },
 
     /**
      *
@@ -654,10 +661,17 @@ const util = {
      * @param value
      * @param callback
      */
-    validPhone: function (rule, value, callback) {
+    validPhoneNotNull: function (rule, value, callback) {
         if (!value) {
             callback(new Error('请输入电话号码'))
         } else if (!util.isPhone(value)) {
+            callback(new Error('请输入正确的11位手机号码'))
+        } else {
+            callback()
+        }
+    },
+    validPhone: function (rule, value, callback) {
+        if (!util.isPhone(value)) {
             callback(new Error('请输入正确的11位手机号码'))
         } else {
             callback()
@@ -873,6 +887,198 @@ const util = {
             callback()
         }
     },
+
+
+    // 文件和图片处理
+    imgUtil(file) {
+        var _this = this;
+        return new Promise((resolve, reject) => {
+            _this.getOrientation(file).then((re) => {
+                //转换成base64
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = function () {
+                    var base64 = this.result,
+                        uploadBase64 = new Image();
+
+                    uploadBase64.src = base64;
+                    uploadBase64.onload = function () {
+                        //修正旋转图片
+                        var canvas = document.createElement("canvas");
+                        if (re !== undefined && re !== "" && re !== 1) {
+                            switch (re) {
+                                case 6:
+                                    // console.log("顺时针旋转270度");
+                                    _this.rotateImg(this, "left", canvas);
+                                    break;
+                                case 8:
+                                    // console.log("顺时针旋转90度");
+                                    _this.rotateImg(this, "right", canvas);
+                                    break;
+                                case 3:
+                                    // console.log("顺时针旋转180度");
+                                    _this.rotateImg(this, "horizen", canvas);
+                                    break;
+                            }
+                            base64 = canvas.toDataURL(file.type);
+                            _this.imgZip(file, base64, canvas.width, canvas.height).then((res) => {
+                                base64 = res
+                            });
+                            resolve({src: base64/*, md5: spark.end()*/});
+                        } else {
+                            _this.imgZip(file, base64, canvas.width, canvas.height).then((res) => {
+                                base64 = res
+                            });
+                            resolve({src: base64/*, md5: spark.end()*/});
+                        }
+                        //输出转换后的流
+                        // var newBlob = convertBase64UrlToBlob(base64, file.type);
+                        // spark.appendBinary(newBlob);
+                        //console.log(spark.end());
+                    };
+                };
+            }).catch((err) => {
+                reject(err)
+            })
+        })
+    },
+
+    //判断图片是否需要选择
+    getOrientation(file) {
+        return new Promise((resolve, reject) => {
+            exif.getData(file, function () {
+                resolve(exif.getTag(this, "Orientation"))
+            });
+        })
+    },
+
+    //对图片旋转处理
+    rotateImg(img, direction, canvas) {
+        //console.log("开始旋转图片");
+        //图片旋转4次后回到原方向
+        if (img == null) return;
+        var height = img.height;
+        var width = img.width;
+        var step = 2;
+
+        if (direction == "right") {
+            step++;
+        } else if (direction == "left") {
+            step--;
+        } else if (direction == "horizen") {
+            step = 2; //不处理
+        }
+        //旋转角度以弧度值为参数
+        var degree = step * 90 * Math.PI / 180;
+        var ctx = canvas.getContext("2d");
+        switch (step) {
+            case 0:
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0);
+                break;
+            case 1:
+                canvas.width = height;
+                canvas.height = width;
+                ctx.rotate(degree);
+                ctx.drawImage(img, 0, -height);
+                break;
+            case 2:
+                canvas.width = width;
+                canvas.height = height;
+                ctx.rotate(degree);
+                ctx.drawImage(img, -width, -height);
+                break;
+            case 3:
+                canvas.width = height;
+                canvas.height = width;
+                ctx.rotate(degree);
+                ctx.drawImage(img, -width, 0);
+                break;
+        }
+        //console.log("结束旋转图片");
+    },
+
+    getBase64File(file) {
+        var reader = new FileReader();
+        reader.readAsDataURL(file);
+        return new Promise((resolve) => {
+            reader.onload = function () {
+                resolve(this.result)
+            }
+        })
+    },
+
+    convertBase64UrlToBlob(urlData, type) {
+        var bytes = window.atob(urlData.split(',')[1]);        //去掉url的头，并转换为byte
+        //处理异常,将ascii码小于0的转换为大于0
+        var ab = new ArrayBuffer(bytes.length);
+        var ia = new Uint8Array(ab);
+        for (var i = 0; i < bytes.length; i++) {
+            ia[i] = bytes.charCodeAt(i);
+        }
+        return new Blob([ab], {type: type});
+    },
+    calculate: function () {
+        var fileReader = new FileReader(),
+            blobSlice = File.prototype.mozSlice || File.prototype.webkitSlice || File.prototype.slice,
+            file = document.getElementById("file").files[0],
+            chunkSize = 2097152,
+            // read in chunks of 2MB
+            chunks = Math.ceil(file.size / chunkSize),
+            currentChunk = 0,
+            spark = new SparkMD5();
+
+        fileReader.onload = function (e) {
+            //console.log("read chunk nr", currentChunk + 1, "of", chunks);
+            spark.appendBinary(e.target.result); // append binary string
+            currentChunk++;
+
+            if (currentChunk < chunks) {
+                loadNext();
+            } else {
+                //console.log("finished loading");
+                console.info("computed hash", spark.end()); // compute hash
+            }
+        };
+
+        function loadNext() {
+            var start = currentChunk * chunkSize,
+                end = start + chunkSize >= file.size ? file.size : start + chunkSize;
+            fileReader.readAsBinaryString(blobSlice.call(file, start, end));
+        }
+
+        loadNext();
+    },
+    imgZip: function (file, base64, w, h) {
+        return new Promise((resolve, reject) => {
+            if (w < 1001 && h < 1001) {
+                return base64
+            }
+            var scale = w / h;
+            var canvas = document.createElement("canvas");
+            var ctx = canvas.getContext("2d");
+            // 默认按比例压缩
+            if (w > 1000 || w > h) {
+                w = 1000;
+                h = parseInt(w / scale)
+            } else if (h > 1000 || h > w) {
+                h = 1000;
+                w = parseInt(h * scale)
+            }
+            var quality = 0.7;  // 默认图片质量为0.7
+            // 创建属性节点
+            canvas.width = w;
+            canvas.height = h;
+            var newImg = new Image();
+            newImg.src = base64;
+            newImg.onload = function () {
+                ctx.drawImage(newImg, 0, 0, w, h);
+                //输出转换后的base64图片
+                resolve(canvas.toDataURL(file.type, quality));
+            }
+        });
+    }
 };
 module.exports = util;
 // Allow use of default import syntax in TypeScript
